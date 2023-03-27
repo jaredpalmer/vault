@@ -15,9 +15,15 @@ import (
 // How long nonces are considered valid.
 const nonceExpiry = 15 * time.Minute
 
-type acmeState struct {
+type ACMEState struct {
 	nextExpiry atomic.Int64
-	nonces     sync.Map // map[string]time.Time
+	nonces     *sync.Map // map[string]time.Time
+}
+
+func NewACMEState() (*ACMEState, error) {
+	return &ACMEState{
+		nonces: new(sync.Map),
+	}, nil
 }
 
 func generateNonce() (string, error) {
@@ -29,7 +35,7 @@ func generateNonce() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
-func (a *acmeState) GetNonce() (string, time.Time, error) {
+func (a *ACMEState) GetNonce() (string, time.Time, error) {
 	now := time.Now()
 	nonce, err := generateNonce()
 	if err != nil {
@@ -48,7 +54,7 @@ func (a *acmeState) GetNonce() (string, time.Time, error) {
 	return nonce, then, nil
 }
 
-func (a *acmeState) RedeemNonce(nonce string) bool {
+func (a *ACMEState) RedeemNonce(nonce string) bool {
 	rawTimeout, present := a.nonces.LoadAndDelete(nonce)
 	if !present {
 		return false
@@ -62,7 +68,7 @@ func (a *acmeState) RedeemNonce(nonce string) bool {
 	return true
 }
 
-func (a *acmeState) DoTidyNonces() {
+func (a *ACMEState) DoTidyNonces() {
 	now := time.Now()
 	expiry := a.nextExpiry.Load()
 	then := time.Unix(expiry, 0)
@@ -72,7 +78,7 @@ func (a *acmeState) DoTidyNonces() {
 	}
 }
 
-func (a *acmeState) TidyNonces() {
+func (a *ACMEState) TidyNonces() {
 	now := time.Now()
 	nextRun := now.Add(nonceExpiry)
 
@@ -92,12 +98,12 @@ func (a *acmeState) TidyNonces() {
 	a.nextExpiry.Store(nextRun.Unix())
 }
 
-func (a *acmeState) LoadKey(keyID string) (map[string]interface{}, error) {
+func (a *ACMEState) LoadKey(keyID string) (map[string]interface{}, error) {
 	// TODO
 	return nil, nil
 }
 
-func (a *acmeState) LoadJWK(keyID string) ([]byte, error) {
+func (a *ACMEState) LoadJWK(keyID string) ([]byte, error) {
 	key, err := a.LoadKey(keyID)
 	if err != nil {
 		return nil, err
@@ -111,7 +117,7 @@ func (a *acmeState) LoadJWK(keyID string) ([]byte, error) {
 	return jwk.([]byte), nil
 }
 
-func (a *acmeState) ParseRequestParams(data *framework.FieldData) (*JWSCtx, map[string]interface{}, error) {
+func (a *ACMEState) ParseRequestParams(data *framework.FieldData) (*JWSCtx, map[string]interface{}, error) {
 	var c JWSCtx
 	var m map[string]interface{}
 
